@@ -1153,6 +1153,49 @@ class CroniterTest(base.TestCase):
         ret = [it.get_prev().isoformat() for i in range(10)]
         self.assertEqual(ret, expected)
 
+    def test_hour_wrong_prior_to_dst(self):
+        # FAILS
+        tz = pytz.timezone("US/Eastern")
+        it = croniter("15 2 * * sun", datetime_tz(2020, 2, 22, tzinfo=tz))
+        ret = [it.get_next(datetime).isoformat() for i in range(8)]
+        self.assertEqual(ret, [
+            "2020-02-23T02:15:00-05:00",
+            "2020-03-01T02:15:00-05:00",
+            "2020-03-08T03:15:00-04:00",
+            "2020-03-15T02:15:00-04:00",
+            "2020-03-22T02:15:00-04:00",
+            "2020-03-29T02:15:00-04:00",
+            "2020-04-05T02:15:00-04:00",
+            "2020-04-12T02:15:00-04:00",
+        ])
+
+    def test_extra_hour_day_prio(self):
+        # Pass
+        tz = pytz.timezone("US/Eastern")
+        cron = "0 3 * * *"
+        start = datetime_tz(2020, 3, 7, tzinfo=tz)
+        it = croniter(cron, start)
+        ret = [it.get_next(datetime).isoformat() for i in range(4)]
+        self.assertEqual(ret, [
+            "2020-03-07T03:00:00-05:00",
+            "2020-03-08T03:00:00-04:00",
+            "2020-03-09T03:00:00-04:00",
+            "2020-03-10T03:00:00-04:00"])
+
+    def tests_dst_skip_day_before(self):
+        # Pass
+        tz = pytz.timezone("US/Eastern")
+        it = croniter("30 4 * * sat", datetime_tz(2020, 3, 7, 2, tzinfo=tz))
+        ret = it.get_next(datetime).isoformat()
+        self.assertEqual(ret, "2020-03-07T04:30:00-05:00")
+
+    def tests_dst_skip_also_good(self):
+        # Pass
+        tz = pytz.timezone("US/Eastern")
+        it = croniter("30 23 * * fri", datetime_tz(2020, 3, 7, tzinfo=tz))
+        ret = it.get_next(datetime).isoformat()
+        self.assertEqual(ret, "2020-03-13T23:30:00-04:00")
+
 
 if __name__ == '__main__':
     unittest.main()
