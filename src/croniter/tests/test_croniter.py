@@ -12,6 +12,19 @@ from tzlocal import get_localzone
 import dateutil.tz
 
 
+def datetime_tz(*args, tzinfo=None, **kwargs):
+    """
+    Helpful constructor abstraction for building datetime objects with timezones from different
+    python modules.  Specifically, pytz timezones don't work with the default tzinfo constructor for
+    many timezones and therefore the use of tz.localize().
+    """
+    if hasattr(tzinfo, "localize"):
+        dt = datetime(*args, **kwargs)
+        return tzinfo.localize(dt)
+    else:
+        return datetime(*args, tzinfo=tzinfo, **kwargs)
+
+
 class CroniterTest(base.TestCase):
 
     def testSecondSec(self):
@@ -1062,6 +1075,81 @@ class CroniterTest(base.TestCase):
             '2020-03-28T03:01:00+01:00',
             '2020-03-29T02:01:00+02:00',
             '2020-03-29T03:01:00+02:00'])
+
+    def test_bug137_dst_spring_dateutil_forward(self):
+        """
+        From https://github.com/taichino/croniter/issues/137
+
+        FAILS:  Stuck on time immediately after time change
+                Keeps returning 2020-03-08T01:00:00-08:00
+        """
+        tz = dateutil.tz.gettz("America/Los_Angeles")
+        start = datetime_tz(year=2020, month=3, day=7, hour=20, tzinfo=tz)
+        # DST change happened at 2am on March 8 2020
+        it = croniter("0 */1 * * *", start)
+        ret = [it.get_next(datetime).isoformat() for i in range(10)]
+        self.assertEqual(ret, [
+            "2020-03-07T21:00:00-08:00",
+            "2020-03-07T22:00:00-08:00",
+            "2020-03-07T23:00:00-08:00",
+            "2020-03-08T00:00:00-08:00",
+            "2020-03-08T01:00:00-08:00",
+            "2020-03-08T03:00:00-07:00",
+            "2020-03-08T04:00:00-07:00",
+            "2020-03-08T05:00:00-07:00",
+            "2020-03-08T06:00:00-07:00",
+            "2020-03-08T07:00:00-07:00"])
+
+    def test_bug137_dst_spring_pytz_forward(self):
+        """
+        Same as https://github.com/taichino/croniter/issues/137
+
+        FAILS:  Returns '2020-03-08T02:00:00-07:00'
+        """
+        tz = pytz.timezone("US/Pacific")
+        start = datetime_tz(year=2020, month=3, day=7, hour=20, tzinfo=tz)
+        # DST change happened at 2am on March 8 2020
+        it = croniter("0 */1 * * *", start)
+        ret = [it.get_next(datetime).isoformat() for i in range(10)]
+        self.assertEqual(ret, [
+            "2020-03-07T21:00:00-08:00",
+            "2020-03-07T22:00:00-08:00",
+            "2020-03-07T23:00:00-08:00",
+            "2020-03-08T00:00:00-08:00",
+            "2020-03-08T01:00:00-08:00",
+            "2020-03-08T03:00:00-07:00",
+            "2020-03-08T04:00:00-07:00",
+            "2020-03-08T05:00:00-07:00",
+            "2020-03-08T06:00:00-07:00",
+            "2020-03-08T07:00:00-07:00"])
+
+    def test_bug137_dst_spring_reverse(self):
+        # Like above, but works fine in reverse order for both dateuil and pytz
+        dt = dict(year=2020, month=3, day=8, hour=8)
+        cron = "0 */1 * * *"
+        expected = [
+            "2020-03-08T07:00:00-07:00",
+            "2020-03-08T06:00:00-07:00",
+            "2020-03-08T05:00:00-07:00",
+            "2020-03-08T04:00:00-07:00",
+            "2020-03-08T03:00:00-07:00",
+            "2020-03-08T01:00:00-08:00",
+            "2020-03-08T00:00:00-08:00",
+            "2020-03-07T23:00:00-08:00",
+            "2020-03-07T22:00:00-08:00",
+            "2020-03-07T21:00:00-08:00",
+        ]
+        # pytz
+        tz = pytz.timezone("US/Pacific")
+        it = croniter(cron, datetime_tz(**dt, tzinfo=tz), ret_type=datetime)
+        ret = [it.get_prev().isoformat() for i in range(10)]
+        self.assertEqual(ret, expected)
+        # dateutil
+        tz = dateutil.tz.gettz("America/Los_Angeles")
+        it = croniter(cron, datetime_tz(**dt, tzinfo=tz), ret_type=datetime)
+        ret = [it.get_prev().isoformat() for i in range(10)]
+        self.assertEqual(ret, expected)
+
 
 if __name__ == '__main__':
     unittest.main()
