@@ -12,17 +12,20 @@ from tzlocal import get_localzone
 import dateutil.tz
 
 
-def datetime_tz(*args, tzinfo=None, **kwargs):
+def datetime_tz(*args, **kwargs):
     """
     Helpful constructor abstraction for building datetime objects with timezones from different
     python modules.  Specifically, pytz timezones don't work with the default tzinfo constructor for
     many timezones and therefore the use of tz.localize().
     """
-    if hasattr(tzinfo, "localize"):
-        dt = datetime(*args, **kwargs)
-        return tzinfo.localize(dt)
-    else:
-        return datetime(*args, tzinfo=tzinfo, **kwargs)
+    try:
+        tzinfo = kwargs.pop("tzinfo")
+        if hasattr(tzinfo, "localize"):
+            dt = datetime(*args, **kwargs)
+            return tzinfo.localize(dt)
+    except KeyError:
+        pass
+    return datetime(*args, tzinfo=tzinfo, **kwargs)
 
 
 class CroniterTest(base.TestCase):
@@ -1141,12 +1144,12 @@ class CroniterTest(base.TestCase):
         ]
         # pytz
         tz = pytz.timezone("US/Pacific")
-        it = croniter(cron, datetime_tz(**dt, tzinfo=tz), ret_type=datetime)
+        it = croniter(cron, datetime_tz(tzinfo=tz, **dt), ret_type=datetime)
         ret = [it.get_prev().isoformat() for i in range(10)]
         self.assertEqual(ret, expected)
         # dateutil
         tz = dateutil.tz.gettz("America/Los_Angeles")
-        it = croniter(cron, datetime_tz(**dt, tzinfo=tz), ret_type=datetime)
+        it = croniter(cron, datetime_tz(tzinfo=tz, **dt), ret_type=datetime)
         ret = [it.get_prev().isoformat() for i in range(10)]
         self.assertEqual(ret, expected)
 
